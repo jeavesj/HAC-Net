@@ -31,12 +31,17 @@ from scipy import stats
 import pickle
 import re
 import pandas as pd
+import time
+import csv
 
 import warnings
 warnings.filterwarnings('ignore')
 
+def _now():
+    return time.perf_counter()
+
 """ define a function to predict pkd for a single protein-ligand complex """
-def predict_pkd(protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_params, gcn1_params, mlp_params, verbose=True, local=True):
+def predict_pkd(name, protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_params, gcn1_params, mlp_params, verbose=True, local=True):
 
   """
   Inputs:
@@ -174,10 +179,12 @@ def predict_pkd(protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_params,
     # save the created object to a pdb file
     return pred_pocket.to_pdb('pocket.pdb')
 
-  print('in predict_pk')
   # run function to extract the pocket from protein pdb file
+  t0 = _now()
   extract_pocket(protein_pdb, ligand_file)
-
+  timing = [{'name': name, 'step': 'extract_pocket', 'seconds': _now() - t0}]
+  
+  t1 = _now()
   # initialize a pymol state by first deleting everything
   cmd.delete('all')
 
@@ -223,7 +230,8 @@ def predict_pkd(protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_params,
     add_mol2_charges_local('pocket.mol2')
   else:
     add_mol2_charges('pocket.mol2')
-
+  timing.append({'name': name, 'step': 'charge_calc', 'seconds': _now() - t1})
+  
   # define charged pocket mol2 variable
   pocket_mol2_charged = 'charged_pocket.mol2'
 
@@ -586,7 +594,8 @@ def predict_pkd(protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_params,
 
       # return properly formatted coordinates, features, and Van der Waals radii
       return data, vdw_radii
-
+  
+  t2 = _now()
   # prepare data from input files
   prep_data, prep_vdw = prepare_data(pocket_mol2_charged, ligand_file, elements_xml)
 
@@ -655,13 +664,13 @@ def predict_pkd(protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_params,
 
     # return voxelized data
     return vol_data
-
+  
   # prepare voxelized data
   prep_data_vox = voxelize_one_vox_per_atom(prep_data[:, 0:3], prep_data[:, 3:], [prep_data.shape[1]-3, 48, 48, 48])
 
   # add an additional axis and convert to a tensor
   prep_data_vox = torch.tensor(prep_data_vox[np.newaxis,...])
-
+  timing.append({'name': name, 'step': 'prep_and_voxelize', 'seconds': _now() - t2})
 
   """ define a function to extract flattened features from trained 3D-CNN """
   def extract_features(checkpoint_path):
@@ -707,9 +716,10 @@ def predict_pkd(protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_params,
 
       # return flattened features
       return flatfeat
-
+  t3 = _now()
   # define extracted features for training MLP
   flat_feat = extract_features(checkpoint_path = cnn_params)
+  timing.append({'name': name, 'step': 'featurize', 'seconds': _now() - t3})
 
   """ define function to perform forward pass and return prediction """
   def test_HACNet(cnn_params, gcn0_params, gcn1_params):
@@ -835,22 +845,18 @@ def predict_pkd(protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_params,
 
       # return prediction
       return y_pred[0]
-
+  
+  t4 = _now()
   # define predicted binding affinity (pKd)
   pkd = test_HACNet(cnn_params = mlp_params,
             gcn0_params = gcn0_params,
             gcn1_params = gcn1_params)
-
+  timing.append({'name': name, 'step': 'infer', 'seconds': _now() - t4})
+  
   # remove intermediate files
   os.remove('pocket.pdb')
   os.remove('pocket.mol2')
   os.remove('charged_pocket.mol2')
-
-  # if verbose is False
-  if verbose ==False:
-
-    # return only pKd
-    return round(pkd, 3)
 
   # if verbose is True
   if verbose == True:
@@ -894,6 +900,7 @@ def predict_pkd(protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_params,
 
     # save session as image
     cmd.png('image.png')
+  return round(pkd, 3), timing
 
 """ Define fully-connected network class """
 class Model_Linear(nn.Module):
@@ -971,8 +978,10 @@ class GCN(torch.nn.Module):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-p', '--protein', type=str, required=True, help='Path to protein file (PDB)')
-    parser.add_argument('-l', '--ligand', type=str, required=True, help='Path to ligand file (MOL2 or PDB)')
+    # parser.add_argument('-p', '--protein', type=str, required=True, help='Path to protein file (PDB)')
+    # parser.add_argument('-l', '--ligand', type=str, required=True, help='Path to ligand file (MOL2 or PDB)')
+    # parser.add_argument('--name', type=str, required=True, help='Sample identifier (e.g., PDB ID)')
+    parser.add_argument('--paths', type=str, required=True, help='Path to csv of protein ligand file paths with columns ["name","protein","ligand"]')
     parser.add_argument('--xml', type=str, default='element_features.xml', help='path to xml file containing atomic features')
     parser.add_argument('--cnn', type=str, default='parameter_files/CNN_parameters.pt', help='path to 3D-CNN parameter file')
     parser.add_argument('--gcn0', type=str, default='parameter_files/GCN0_parameters.pt', help='path to GCN parameter file')
@@ -980,16 +989,34 @@ def main():
     parser.add_argument('--mlp', type=str, default='parameter_files/MLP_parameters.pt', help='path to MLP parameter file')
     parser.add_argument('--hacnet_dir', type=str, default='HACNet', help='path to HACNet directory (located within HAC-Net)')
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('--time_log', type=str, default='times.csv', help='Path to csv to store time logs.')
+    parser.add_argument('--output_csv', type=str, default='predictions.csv', help='Path to csv to save predictions in.')
     
     args = parser.parse_args()
     
     os.chdir(args.hacnet_dir)
-    
-    pred = predict_pkd(protein_pdb=args.protein, ligand_file=args.ligand, elements_xml=args.xml,
-                cnn_params=args.cnn, gcn0_params=args.gcn0, gcn1_params=args.gcn1,
-                mlp_params=args.mlp, verbose=args.verbose)
-    
-    print(pred)
+    if os.path.exists(args.output_csv):
+        out_df = pd.read_csv(args.output_csv)
+        done_already = out_df['name'].to_list()
+    else:
+        done_already = []
+        
+    idx_df = pd.read_csv(args.paths)
+    for idx, row in idx_df.iterrows():
+        
+        try:
+            name = row['name']
+            if name in done_already:
+                continue
+            protein=row['protein']
+            ligand=row['ligand']
+            pred, timing = predict_pkd(name=name, protein_pdb=protein, ligand_file=ligand, elements_xml=args.xml,
+                        cnn_params=args.cnn, gcn0_params=args.gcn0, gcn1_params=args.gcn1,
+                        mlp_params=args.mlp, verbose=args.verbose)
 
+            pd.DataFrame([name, pred], columns=['name', 'prediction']).to_csv(args.output_csv, index=False, mode='a')
+            pd.DataFrame(timing).to_csv(args.time_log, index=False, mode='a')
+        except Exception as e:
+            print(f'Failed for {row['name']} due to {e}. Skipping.')
 if __name__ == '__main__':
     main()
