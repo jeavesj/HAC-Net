@@ -50,7 +50,7 @@ warnings.filterwarnings('ignore')
 
 # simple per-process throttle
 _LAST_REQ_TS = 0.0
-RATE_LIMIT_SECONDS = 1.5  # ~<= 40 requests/min. Adjust upward if you still see 429.
+RATE_LIMIT_SECONDS = 1.0  # ~<= 40 requests/min. Adjust upward if you still see 429.
 
 def _throttle():
     global _LAST_REQ_TS
@@ -92,9 +92,9 @@ def _request_with_backoff(session, method, url, **kwargs):
             try:
                 time.sleep(float(ra))
             except Exception:
-                time.sleep(3.0)
+                time.sleep(1.0)
         else:
-            time.sleep(3.0)
+            time.sleep(1.0)
         # One manual retry after waiting
         _throttle()
         resp = session.request(method, url, timeout=kwargs.pop('timeout', 120), **kwargs)
@@ -297,16 +297,16 @@ def predict_pkd(name, protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_p
     s = _session_with_retries()
 
     # ---- sanity check files we need ----
-    if not os.path.exists('pocket_for_acc2.mol2') or os.path.getsize('pocket_for_acc2.mol2') == 0:
-        raise RuntimeError("pocket_for_acc2.mol2 missing/empty; ensure OBabel wrote it from pocket.pdb.")
-    if not os.path.exists('pocket.mol2') or os.path.getsize('pocket.mol2') == 0:
-        raise RuntimeError("pocket.mol2 missing/empty; ensure PyMOL wrote it before charging.")
+    if not os.path.exists(pocket_mol2) or os.path.getsize(pocket_mol2) == 0:
+        raise RuntimeError(f"{pocket_mol2} missing/empty; ensure OBabel wrote it from pocket.pdb.")
+    if not os.path.exists(pocket_mol2) or os.path.getsize(pocket_mol2) == 0:
+        raise RuntimeError(f"{pocket_mol2} missing/empty; ensure PyMOL wrote it before charging.")
 
     # ---- upload MOL2 ----
-    with open('pocket_for_acc2.mol2', 'rb') as fh:
+    with open(pocket_mol2, 'rb') as fh:
         up = _request_with_backoff(
             s, 'POST', 'https://acc2.ncbr.muni.cz/api/v1/files/upload',
-            files={'files': ('pocket_for_acc2.mol2', fh, 'chemical/x-mol2')}
+            files={'files': (pocket_mol2, fh, 'chemical/x-mol2')}
         )
     if up.status_code >= 400:
         raise RuntimeError(f"ACC2 upload {up.status_code}. Body: {up.text[:500]}")
@@ -352,7 +352,7 @@ def predict_pkd(name, protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_p
         if dl.status_code == 200 and dl.headers.get('Content-Type','').startswith('application/zip') and dl.content:
             zip_bytes = dl.content
             break
-        time.sleep(1.25)
+        time.sleep(1.0)
 
     if zip_bytes is None:
         raise RuntimeError("ACC2 download did not become ready within timeout.")
@@ -393,7 +393,7 @@ def predict_pkd(name, protein_pdb, ligand_file, elements_xml, cnn_params, gcn0_p
     if (n_heavy == 0) or (frac_zero > 0.30) or (mean_abs < 0.01):
         # Likely charges lost in conversion; fall back to local eqeq to avoid quality drop
         print("[ACC2] Warning: charged MOL2 appears under-charged. Falling back to local eqeq for this complex.")
-        add_mol2_charges_local('pocket.mol2', out_mol2=out_mol2, model='eqeq')
+        add_mol2_charges_local(pocket_mol2, out_mol2=out_mol2, model='eqeq')
 
     return out_mol2
 
