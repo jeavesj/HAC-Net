@@ -943,14 +943,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--protein_pdb_fpath', required=True, type=str, help='Path to protein pdb file')
     parser.add_argument('--ligand_mol2_fpath', required=True, type=str, help='Path to ligand sdf file')
+    parser.add_argument('--elements_xml', default='HACNet/element_features.xml', type=str, help='Path to element_features.xml')
+    parser.add_argument('--cnn_params', default='HACNet/parameter_files/CNN_parameters.pt', type=str, help='Path to cnn params')
+    parser.add_argument('--gcn0_params', default='HACNet/parameter_files/GCN0_parameters.pt', type=str, help='Path to gcn0 params')
+    parser.add_argument('--gcn1_params', default='HACNet/parameter_files/GCN1_parameters.pt', type=str, help='Path to gcn1 params')
+    parser.add_argument('--mlp_params', default='HACNet/parameter_files/MLP_parameters.pt', type=str, help='Path to mlp params')
     parser.add_argument('-v', '--verbose', action='store_true')
+
     parser.add_help('This script must be stored in the base HAC-Net directory (cloned repo)')
     args = parser.parse_args()
     
     protein = args.protein_pdb_fpath #@param {type:'string'}
     ligand = args.ligand_mol2_fpath  #@param {type:'string'}
-    verbose = args.verbose
     
-    predict_pkd(protein_pdb=protein, ligand_mol2=ligand, elements_xml=elements_xml,
-                cnn_params=cnn_params, gcn0_params=gcn0_params, gcn1_params=gcn1_params,
-                mlp_params=mlp_params, verbose=verbose)
+    predict_pkd(protein_pdb=protein, ligand_mol2=ligand, elements_xml=args.elements_xml,
+                cnn_params=args.cnn_params, gcn0_params=args.gcn0_params, gcn1_params=args.gcn1_params,
+                mlp_params=args.mlp_params, verbose=args.verbose)
