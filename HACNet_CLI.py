@@ -1,5 +1,3 @@
-#@title Inference Function
-
 from biopandas.pdb import PandasPdb
 from biopandas.mol2 import PandasMol2
 import numpy as np
@@ -938,11 +936,6 @@ class GCN(torch.nn.Module):
         prediction = self.output(pool_x)
 
         return prediction
-
-#@title Predict Binding Affinity (pKd)
-#@markdown **Enter the paths to the protein and ligand structural files, select
-#@markdown the type of output you wish to receive, and then press the *Play*
-#@markdown button on the left.**
 
 import warnings
 warnings.filterwarnings("ignore")
