@@ -27,6 +27,9 @@ import random
 from scipy import stats
 import matplotlib.pyplot as plt
 import argparse
+import zipfile
+import io
+import tempfile
 
 from IPython.display import Image, display
 
@@ -156,7 +159,7 @@ def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params,
     pred_pocket.df['ATOM'], pred_pocket.df['HETATM'] = residues, heteroatoms
 
     # save the created object to a pdb file
-    return pred_pocket.to_pdb('/content/pocket.pdb')
+    return pred_pocket.to_pdb('pocket.pdb')
 
   # run function to extract the pocket from protein pdb file
   extract_pocket(protein_pdb, ligand_mol2)
@@ -165,13 +168,13 @@ def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params,
   cmd.delete('all')
 
   # load in the created pocket pdb file
-  cmd.load('/content/pocket.pdb')
+  cmd.load('pocket.pdb')
 
   # add hydrogens to the water molecules
   cmd.h_add('sol')
 
   # save the state as a mol2 file
-  cmd.save('/content/pocket.mol2')
+  cmd.save('pocket.mol2')
 
   """ define function to calculate charges for pocket mol2 file """
   def add_mol2_charges(pocket_mol2):
@@ -227,10 +230,10 @@ def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params,
           dst.write(src.read())
 
   # run function to calculate and add charges to pocket mol2 file
-  add_mol2_charges('/content/pocket.mol2')
+  add_mol2_charges('pocket.mol2')
 
   # define charged pocket mol2 variable
-  pocket_mol2_charged = '/content/charged_pocket.mol2'
+  pocket_mol2_charged = 'charged_pocket.mol2'
 
   """ define Featurizer class from tfbio source code """
   class Featurizer():
@@ -840,9 +843,9 @@ def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params,
             gcn1_params = gcn1_params)
 
   # remove intermediate files
-  os.remove('/content/pocket.pdb')
-  os.remove('/content/pocket.mol2')
-  os.remove('/content/charged_pocket.mol2')
+  os.remove('pocket.pdb')
+  os.remove('pocket.mol2')
+  os.remove('charged_pocket.mol2')
 
   # if verbose is False
   if verbose ==False:
@@ -987,13 +990,14 @@ def main():
     parser.add_argument('--gcn1_params', default='HACNet/parameter_files/GCN1_parameters.pt', type=str, help='Path to gcn1 params')
     parser.add_argument('--mlp_params', default='HACNet/parameter_files/MLP_parameters.pt', type=str, help='Path to mlp params')
     parser.add_argument('-v', '--verbose', action='store_true')
-
-    parser.add_help('This script must be stored in the base HAC-Net directory (cloned repo)')
     args = parser.parse_args()
     
     protein = args.protein_pdb_fpath #@param {type:'string'}
     ligand = args.ligand_mol2_fpath  #@param {type:'string'}
     
-    predict_pkd(protein_pdb=protein, ligand_mol2=ligand, elements_xml=args.elements_xml,
+    print(predict_pkd(protein_pdb=protein, ligand_mol2=ligand, elements_xml=args.elements_xml,
                 cnn_params=args.cnn_params, gcn0_params=args.gcn0_params, gcn1_params=args.gcn1_params,
-                mlp_params=args.mlp_params, verbose=args.verbose)
+                mlp_params=args.mlp_params, verbose=args.verbose))
+    
+if __name__=='__main__':
+    main()
