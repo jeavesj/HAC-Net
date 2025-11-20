@@ -646,7 +646,7 @@ def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params,
       model.to(device)
 
       # load checkpoint file
-      checkpoint = torch.load(checkpoint_path, map_location=device)
+      checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
       # prepare model state dict from CNN parameter file
       model_state_dict = checkpoint.pop("model_state_dict")
@@ -695,7 +695,7 @@ def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params,
       cnn_model.to(device)
 
       # load checkpoint file
-      cnn_checkpoint = torch.load(cnn_params, map_location=device)
+      cnn_checkpoint = torch.load(cnn_params, map_location=device, weights_only=False)
 
       # load in parameters and fill model state dict
       cnn_model_state_dict = cnn_checkpoint.pop("model_state_dict")
@@ -714,10 +714,10 @@ def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params,
           y_pred_cnn = ypred
 
       # define first GCN model (GCN0)
-      gcn0_model = GeometricDataParallel(GCN(in_channels=20, gather_width=128, prop_iter=4, dist_cutoff=3.5)).float()
+      gcn0_model = GeometricDataParallel(GCN(in_channels=20, gather_width=128, prop_iter=4, dist_cutoff=3.5)).float().to(device)
 
       # load checkpoint file
-      gcn0_checkpoint = torch.load(gcn0_params, map_location=device)
+      gcn0_checkpoint = torch.load(gcn0_params, map_location=device, weights_only=False)
 
       # fill model state dict with parameters
       gcn0_model_state_dict = gcn0_checkpoint.pop("model_state_dict")
@@ -748,10 +748,10 @@ def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params,
       y_pred_gcn0 = np.concatenate(y_).reshape(-1, 1).squeeze(1)
 
       # define second GCN model (GCN1)
-      gcn1_model = GeometricDataParallel(GCN(in_channels=20, gather_width=128, prop_iter=4, dist_cutoff=3.5)).float()
+      gcn1_model = GeometricDataParallel(GCN(in_channels=20, gather_width=128, prop_iter=4, dist_cutoff=3.5)).float().to(device)
 
       # load checkpoint file
-      gcn1_checkpoint = torch.load(gcn1_params, map_location=device)
+      gcn1_checkpoint = torch.load(gcn1_params, map_location=device, weights_only=False)
 
       # fill model state dict with parameters
       gcn1_model_state_dict = gcn1_checkpoint.pop("model_state_dict")
