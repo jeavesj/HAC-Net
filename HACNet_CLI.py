@@ -177,16 +177,54 @@ def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params,
   def add_mol2_charges(pocket_mol2):
 
     # upload the pocket mol2 file to the ACC2 API
-    r=requests.post('https://acc2-api.biodata.ceitec.cz/send_files', files={'file[]':open(pocket_mol2,'rb')})
-
-    # obtain ID number for uploaded file
-    r_id=list(r.json()['structure_ids'].values())[0]
+    up=requests.post('https://acc2.ncbr.muni.cz/api/v1/files/upload', files={'files': (os.path.basename(pocket_mol2), open(pocket_mol2,'rb'), 'chemical/mol2')})
+    if up.status_code >= 400:
+      raise RuntimeError(f"ACC2 upload {up.status_code}. Body: {up.text[:400]}")
+    uj = up.json()
+    file_hashes = [d.get('fileHash') for d in uj['data'] if isinstance(d, dict)]
+    if not file_hashes:
+        raise RuntimeError('ACC2 upload returned no fileHash')
+    
+    # settings for ACC2 API
+    st = requests.post(
+      'https://acc2.ncbr.muni.cz/api/v1/charges/setup',
+      json={"fileHashes": file_hashes,
+            "settings": {"readHetatm": True, "ignoreWater": True, "permissiveTypes": True}},
+      timeout=120
+    )
+    if st.status_code >= 400:
+        raise RuntimeError(f"ACC2 setup {st.status_code}. Body: {st.text[:400]}")
+    sj = st.json()
+    comp_id = sj.get('data')
+    if not comp_id:
+      raise RuntimeError("ACC2 setup did not return computation_id")
 
     # calculate charges using eqeq method
-    r_out=requests.get('https://acc2-api.biodata.ceitec.cz/calculate_charges?structure_id='+r_id+'&method=eqeq&generate_mol2=true')
+    calc = requests.post('https://acc2.ncbr.muni.cz/api/v1/charges/calculate?response_format=none',
+      json={"fileHashes": [], "configs": [{"method": "eqeq", "parameters": ""}],
+            "computation_id": comp_id}, timeout=120)
+    
+    if calc.status_code >= 400:
+        raise RuntimeError(f"ACC2 calculate {calc.status_code}. Body: {calc.text[:400]}")
 
+    dl_url = f'https://acc2.ncbr.muni.cz/api/v1/files/download/computation/{comp_id}'
+    zip_bytes = None
+    for _ in range(300):  # up to ~300s
+      dl = requests.get(dl_url, timeout=120)
+      if dl.status_code == 200 and dl.headers.get('Content-Type', '').startswith('application/zip') and dl.content:
+        zip_bytes = dl.content
+        break
+      time.sleep(1.0)
+    if zip_bytes is None:
+      raise RuntimeError("ACC2 download did not become ready in time")
+  
     # save output mol2 file
-    open('/content/charged_pocket.mol2', 'wb').write(r_out.content)
+    out_mol2 = 'charged_pocket.mol2'
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+      mol2_members = [n for n in zf.namelist() if n.lower().endswith('.mol2')]
+      if mol2_members:
+        with zf.open(mol2_members[0]) as src, open(out_mol2, 'wb') as dst:
+          dst.write(src.read())
 
   # run function to calculate and add charges to pocket mol2 file
   add_mol2_charges('/content/pocket.mol2')
