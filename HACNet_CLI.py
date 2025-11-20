@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 import argparse
 import zipfile
 import io
-import tempfile
+import time
 
 from IPython.display import Image, display
 
@@ -920,9 +920,6 @@ class Model_Linear(nn.Module):
 		fc2_z = self.fc2(fc1)
 		return fc2_z, fc1_z
 
-
-
-
 class GCN(torch.nn.Module):
 
     def __init__(self, in_channels, gather_width=128, prop_iter=4, dist_cutoff=3.5):
@@ -990,14 +987,20 @@ def main():
     parser.add_argument('--gcn1_params', default='HACNet/parameter_files/GCN1_parameters.pt', type=str, help='Path to gcn1 params')
     parser.add_argument('--mlp_params', default='HACNet/parameter_files/MLP_parameters.pt', type=str, help='Path to mlp params')
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('--log', required=False, help='Path to csv for output prediction and time logging.')
     args = parser.parse_args()
     
     protein = args.protein_pdb_fpath #@param {type:'string'}
     ligand = args.ligand_mol2_fpath  #@param {type:'string'}
     
-    print(predict_pkd(protein_pdb=protein, ligand_mol2=ligand, elements_xml=args.elements_xml,
+    t0 = time.time()
+    pred = predict_pkd(protein_pdb=protein, ligand_mol2=ligand, elements_xml=args.elements_xml,
                 cnn_params=args.cnn_params, gcn0_params=args.gcn0_params, gcn1_params=args.gcn1_params,
-                mlp_params=args.mlp_params, verbose=args.verbose))
+                mlp_params=args.mlp_params, verbose=args.verbose)
+    t1 = time.time() - t0
+    
+    if args.log:
+        np.savetxt(args.log, np.array([[pred, t1]]), delimiter=',', fmt='%.4f', header='prediction,time_s', comments='')
     
 if __name__=='__main__':
     main()
