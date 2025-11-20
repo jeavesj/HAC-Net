@@ -26,13 +26,12 @@ import os
 import random
 from scipy import stats
 import matplotlib.pyplot as plt
+import argparse
 
 from IPython.display import Image, display
 
-os.chdir('/content/HAC-Net/HACNet')
-
-from CNN import *
-from GCN import *
+from HACNet.CNN import *
+from HACNet.GCN import *
 
 """ define a function to predict pkd for a single protein-ligand complex """
 def predict_pkd(protein_pdb, ligand_mol2, elements_xml, cnn_params, gcn0_params, gcn1_params, mlp_params, verbose=True):
@@ -940,15 +939,18 @@ class GCN(torch.nn.Module):
 import warnings
 warnings.filterwarnings("ignore")
 
-protein = ''  #@param {type:'string'}
-ligand = ''  #@param {type:'string'}
-output = "only pKd" #@param ["pKd and visual", "only pKd"] {allow-input: true}
-
-if output == "pKd and visual":
-  verbose = True
-elif output == 'only pKd':
-  verbose = False
-
-predict_pkd(protein_pdb=protein, ligand_mol2=ligand, elements_xml=elements_xml,
-            cnn_params=cnn_params, gcn0_params=gcn0_params, gcn1_params=gcn1_params,
-            mlp_params=mlp_params, verbose=verbose)
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--protein_pdb_fpath', required=True, type=str, help='Path to protein pdb file')
+    parser.add_argument('--ligand_mol2_fpath', required=True, type=str, help='Path to ligand sdf file')
+    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_help('This script must be stored in the base HAC-Net directory (cloned repo)')
+    args = parser.parse_args()
+    
+    protein = args.protein_pdb_fpath #@param {type:'string'}
+    ligand = args.ligand_mol2_fpath  #@param {type:'string'}
+    verbose = args.verbose
+    
+    predict_pkd(protein_pdb=protein, ligand_mol2=ligand, elements_xml=elements_xml,
+                cnn_params=cnn_params, gcn0_params=gcn0_params, gcn1_params=gcn1_params,
+                mlp_params=mlp_params, verbose=verbose)
